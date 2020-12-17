@@ -1,13 +1,9 @@
-# Home Assistant - Dual Mode Generic Thermostat
+# Home Assistant - Dual Mode Underfloor Thermostat with floor sensor
+Based on [zacs/ha-dualmodegeneric](https://github.com/zacs/ha-dualmodegeneric)
 
-> Special thanks to [shandoosheri](https://community.home-assistant.io/t/heat-cool-generic-thermostat/76443) for getting this to work on older versions of Home Assistant, which gave me an easy blueprint to follow. And thanks [@kevinvincent](https://github.com/kevinvincent) for writing a nice `custom_component` readme for me to fork.
-
-This component is a straightfoward fork of the mainline `generic_thermostat`.
-
-## Installation (HACS) - Recommended
-0. Have [HACS](https://custom-components.github.io/hacs/installation/manual/) installed, this will allow you to easily update
-1. Add `https://github.com/zacs/ha-dualmodegeneric` as a [custom repository](https://custom-components.github.io/hacs/usage/settings/#add-custom-repositories) as Type: Integration
-2. Click install under "Dual Mode Generic Thermostat", restart your instance.
+## About
+I have ambient temperature sensors and floor temperature sensors in every room and I want to control the room temperature based on ambient air temperature and also set limit for floor temperature, idividualy for heating and for cooling.
+This is the first time I used python so please check it before you use it. For the moment I have it set up as 9 thermostats and all is good, but definitly needs more work. At the moment there are no check for min/max values, for example if max is lower than min.
 
 ## Installation (Manual)
 1. Download this repository as a ZIP (green button, top right) and unzip the archive
@@ -27,12 +23,24 @@ climate:
     cooler: switch.fan
     target_sensor: sensor.my_temp_sensor
     reverse_cycle: true
+    floor_sensor: sensor.my_floor_temp_sensor
+    sensor_mode: smart
+    fs_cool_min_temp: 20
+    fs_cool_max_temp: 24
+    fs_heat_min_temp: 24
+    fs_heat_max_temp: 28
 ```
 
 The component shares the same configuration variables as the standard `generic_thermostat`, with three exceptions:
 * A `cooler` variable has been added where you can specify the `entity_id` of your switch for a cooling unit (AC, fan, etc).
 * If the cooling and heating unit are the same device (e.g. a reverse cycle air conditioner) setting `reverse_cycle` to `true` will ensure the device isn't switched off entirely when switching modes
 * The `ac_mode` variable has been removed, since it makes no sense for this use case.
+* `floor_sensor` variable specifies the `entity_id` for the floor temperature sensor.
+* The `sensor_mode` can change the sensor used for controling the outputs. Values accepted are `ambient` (default), `floor`, `smart`.
+  `ambient` uses only the air temperature, same as generic thermostat.
+  `floor` uses only the floor sensor instead of ambient sensor with the aditional limits.
+  `smart` uses both sensors. Air temperature for target temperature and floor sensors for floor temperature limits. Ambient temperature is valid only when floor temperature is within limits. 
+* The `fs_cool_min_temp` and `fs_cool_max_temp` define the limits for cooling mode and `fs_heat_min_temp` and `fs_heat_max_temp` define the limits for heating mode.
 
 Refer to the [Generic Thermostat documentation](https://www.home-assistant.io/components/generic_thermostat/) for details on the rest of the variables. This component doesn't change their functionality.
 
