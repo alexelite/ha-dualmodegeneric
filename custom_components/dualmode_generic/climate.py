@@ -64,6 +64,8 @@ CONF_MAX_TEMP = "max_temp"
 
 CONF_SENSOR_MODE = "sensor_mode"
 CONF_FLOOR_SENSOR = "floor_sensor"
+CONF_HUMIDIDY_SENSOR = "humidity_sensor"
+CONF_WINDOW_SWITCH = "window_switch"
 CONF_FS_COOL_MIN_TEMP = "fs_cool_min_temp"
 CONF_FS_COOL_MAX_TEMP = "fs_cool_max_temp"
 CONF_FS_HEAT_MIN_TEMP = "fs_heat_min_temp"
@@ -71,7 +73,6 @@ CONF_FS_HEAT_MAX_TEMP = "fs_heat_max_temp"
 SENSOR_MODE_AMBIENT = "ambient"
 SENSOR_MODE_FLOOR = "floor"
 SENSOR_MODE_SMART = "smart"
-
 
 CONF_TARGET_TEMP = "target_temp"
 CONF_MIN_DUR = "min_cycle_duration"
@@ -92,6 +93,8 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_MIN_DUR): vol.All(cv.time_period, cv.positive_timedelta),
         vol.Optional(CONF_MIN_TEMP): vol.Coerce(float),
         vol.Optional(CONF_FLOOR_SENSOR): cv.entity_id,
+        vol.Optional(CONF_HUMIDIDY_SENSOR): cv.entity_id,
+        vol.Optional(CONF_WINDOW_SWITCH): cv.entity_id,
         vol.Optional(CONF_FS_COOL_MAX_TEMP): vol.Coerce(float),
         vol.Optional(CONF_FS_COOL_MIN_TEMP): vol.Coerce(float),
         vol.Optional(CONF_FS_HEAT_MAX_TEMP): vol.Coerce(float),
@@ -127,6 +130,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     max_temp = config.get(CONF_MAX_TEMP)
     sensor_mode = config.get(CONF_SENSOR_MODE)
     floor_sensor_entity_id = config.get(CONF_FLOOR_SENSOR)
+    humidity_sensor_entity_id = config.get(CONF_HUMIDIDY_SENSOR)
+    window_switch_entity_id = config.get(CONF_WINDOW_SWITCH)
     fs_cool_min_temp = config.get(CONF_FS_COOL_MIN_TEMP)
     fs_cool_max_temp = config.get(CONF_FS_COOL_MAX_TEMP)
     fs_heat_min_temp = config.get(CONF_FS_HEAT_MIN_TEMP)
@@ -153,6 +158,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
                 max_temp,
                 sensor_mode,
                 floor_sensor_entity_id,
+                humidity_sensor_entity_id,
+                window_switch_entity_id,
                 fs_cool_min_temp,
                 fs_cool_max_temp,
                 fs_heat_min_temp,
@@ -185,6 +192,8 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         max_temp,
         sensor_mode,
         floor_sensor_entity_id,
+        humidity_sensor_entity_id,
+        window_switch_entity_id,
         fs_cool_min_temp,
         fs_cool_max_temp,
         fs_heat_min_temp,
@@ -216,11 +225,15 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         self._active = False
         self._cur_temp = None
         self._cur_floor_temp = None
+        self._cur_humidity = None
+        self._window_switch = None
         self._temp_lock = asyncio.Lock()
         self._min_temp = min_temp
         self._max_temp = max_temp
         self.sensor_mode = sensor_mode
         self.floor_sensor_entity_id = floor_sensor_entity_id
+        self.humidity_sensor_entity_id = humidity_sensor_entity_id
+        self.window_switch_entity_id = window_switch_entity_id
         self._fs_cool_min_temp = fs_cool_min_temp
         self._fs_cool_max_temp = fs_cool_max_temp
         self._fs_heat_min_temp = fs_heat_min_temp
@@ -241,10 +254,21 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         async_track_state_change(
             self.hass, self.sensor_entity_id, self._async_sensor_changed
         )
-
         if self.floor_sensor_entity_id is not None:
             async_track_state_change(
                 self.hass, self.floor_sensor_entity_id, self._async_floor_sensor_changed
+            )
+        if self.humidity_sensor_entity_id is not None:
+            async_track_state_change(
+                self.hass,
+                self.humidity_sensor_entity_id,
+                self._async_humidity_sensor_changed,
+            )
+        if self.window_switch_entity_id is not None:
+            async_track_state_change(
+                self.hass,
+                self.window_switch_entity_id,
+                self._async_window_switch_changed,
             )
         async_track_state_change(
             self.hass, self.heater_entity_id, self._async_switch_changed
@@ -262,13 +286,18 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         def _async_startup(event):
             """Init on startup."""
             sensor_state = self.hass.states.get(self.sensor_entity_id)
+            floor_sensor_state = self.hass.states.get(self.floor_sensor_entity_id)
             if sensor_state and sensor_state.state not in (
                 STATE_UNAVAILABLE,
                 STATE_UNKNOWN,
             ):
                 _LOGGER.info("Init on startup.")
                 self._async_update_temp(sensor_state)
-                self._async_update_floor_temp(sensor_state)  # check if needed
+            if floor_sensor_state and floor_sensor_state.state not in (
+                STATE_UNAVAILABLE,
+                STATE_UNKNOWN,
+            ):
+                self._async_update_floor_temp(floor_sensor_state)  # check if needed
 
         self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_START, _async_startup)
 
@@ -327,6 +356,20 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         return super().precision
 
     @property
+    def device_state_attributes(self):
+        """Return device specific state attributes."""
+        attributes = {}
+        if self.floor_sensor_entity_id is not None:
+            attributes["current_floor_temperature"] = self._cur_floor_temp
+            attributes["fs_cool_min_temp"] = self._fs_cool_min_temp
+            attributes["fs_cool_max_temp"] = self._fs_cool_max_temp
+            attributes["fs_heat_min_temp"] = self._fs_heat_min_temp
+            attributes["fs_heat_max_temp"] = self._fs_heat_max_temp
+        if self.window_switch_entity_id is not None:
+            attributes["window_switch"] = self._window_switch
+        return attributes
+
+    @property
     def temperature_unit(self):
         """Return the unit of measurement."""
         return self._unit
@@ -337,8 +380,13 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         return self._cur_temp
 
     @property
+    def current_humidity(self):
+        """Return the humidity."""
+        return self._cur_humidity
+
+    @property
     def current_floor_temperature(self):
-        """Return the sensor temperature."""
+        """Return the floor sensor temperature."""
         return self._cur_floor_temp
 
     @property
@@ -486,6 +534,23 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         await self._async_control_heating()
         self.async_write_ha_state()
 
+    async def _async_humidity_sensor_changed(self, entity_id, old_state, new_state):
+        """Handle humidity changes."""
+        if new_state is None or new_state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return
+
+        self._async_update_humidity(new_state)
+        await self._async_control_heating()
+        self.async_write_ha_state()
+
+    @callback
+    def _async_window_switch_changed(self, entity_id, old_state, new_state):
+        """Handle window switch state changes."""
+        if new_state is None:
+            return
+        self._async_update_window_swithc(new_state)
+        self.async_write_ha_state()
+
     @callback
     def _async_switch_changed(self, entity_id, old_state, new_state):
         """Handle heater switch state changes."""
@@ -494,14 +559,20 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
         self.async_write_ha_state()
 
     @callback
+    def _async_update_window_swithc(self, state):
+        """Update window switch with latest state from sensor."""
+        try:
+            self._window_switch = "open" if state.state == "on" else "closed"
+        except ValueError as ex:
+            _LOGGER.error("Unable to update from sensor: %s", ex)
+
+    @callback
     def _async_update_temp(self, state):
         """Update thermostat with latest state from sensor."""
         try:
             self._cur_temp = float(state.state)
         except ValueError as ex:
             _LOGGER.error("Unable to update from sensor: %s", ex)
-        else:
-            _LOGGER.info("Update thermostat with latest state from sensor")
 
     @callback
     def _async_update_floor_temp(self, state):
@@ -510,8 +581,14 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
             self._cur_floor_temp = float(state.state)
         except ValueError as ex:
             _LOGGER.error("Unable to update from sensor: %s", ex)
-        else:
-            _LOGGER.info("Update thermostat with latest state from floor sensor")
+
+    @callback
+    def _async_update_humidity(self, state):
+        """Update thermostat with latest state from sensor."""
+        try:
+            self._cur_humidity = float(state.state)
+        except ValueError as ex:
+            _LOGGER.error("Unable to update from sensor: %s", ex)
 
     async def _async_control_heating(self, time=None, force=False):
         """Check if we need to turn heating on or off."""
@@ -595,6 +672,10 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
                             >= self._fs_cool_min_temp + self._hot_tolerance
                         )
                     )
+                else:
+                    too_cold = False
+                    too_hot = False
+                    _LOGGER.error("Smart mode, HVAC_MODE nor heat or cool")
             elif self.sensor_mode == SENSOR_MODE_FLOOR:
                 if self._hvac_mode == HVAC_MODE_HEAT:
                     too_cold = (
@@ -638,6 +719,10 @@ class DualModeGenericThermostat(ClimateEntity, RestoreEntity):
                             > self._fs_cool_min_temp + self._hot_tolerance
                         )
                     )
+                else:
+                    too_cold = False
+                    too_hot = False
+                    _LOGGER.error("Floor mode, HVAC_MODE nor heat or cool")
             else:  # self.sensor_mode == SENSOR_MODE_AMBIENT:
                 too_cold = self._target_temp >= self._cur_temp + self._cold_tolerance
                 too_hot = self._cur_temp >= self._target_temp + self._hot_tolerance
