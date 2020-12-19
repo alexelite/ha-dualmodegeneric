@@ -41,6 +41,8 @@ The component shares the same configuration variables as the standard `generic_t
   `floor` uses only the floor sensor instead of ambient sensor with the aditional limits.
   `smart` uses both sensors. Air temperature for target temperature and floor sensors for floor temperature limits. Ambient temperature is valid only when floor temperature is within limits. 
 * The `fs_cool_min_temp` and `fs_cool_max_temp` define the limits for cooling mode and `fs_heat_min_temp` and `fs_heat_max_temp` define the limits for heating mode.
+* `humidity_sensor` entity_id, will be used in the future to stop cooling if value above safety threshold, for the moment it is just passed as an attribute for the climate entity to be used in lovelace card
+* `window_switch` entity_id, for the moment it is just passed as an attribute for the climate entity to be used in lovelace card
 
 Refer to the [Generic Thermostat documentation](https://www.home-assistant.io/components/generic_thermostat/) for details on the rest of the variables. This component doesn't change their functionality.
 
