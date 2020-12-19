@@ -1,8 +1,8 @@
 {
     "domain": "dualmode_generic",
     "name": "Dual-Mode Generic Thermostat",
-    "documentation": "https://github.com/zacs/ha-dualmodegeneric",
+    "documentation": "https://github.com/alexelite/ha-dualmodegeneric",
     "dependencies": [],
-    "codeowners": ["@zacs"],
+    "codeowners": ["@alexelite"],
     "requirements": []
 }
